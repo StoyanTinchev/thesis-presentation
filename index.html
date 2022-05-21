@@ -22,7 +22,7 @@
             <h5>Система за съхранение, извличане и обработка на големи графовобазирани данни</h5>
             <br/>
             <i><p>Дипломант: Стоян Тинчев</p></i>
-            <i><p>Ръководител: Любомир Стоянов</p></i>
+            <i><p>Ръководител: инж. Любомир Стоянов</p></i>
         </section>
 
         <section>
@@ -113,8 +113,7 @@
             <h3>Клиент-сървър модул</h3>
             <ul>
                 <li>Може да се използва самостоятелно, като не е необходимо структурата за съхранение да е B-дърво</li>
-                <li>Релизацията е изцяло абстрактна и могат да се съхраняват всякакви типове, дори такива, които
-                    са дефиниране от потребителя
+                <li>Базиран е на изцяло абстрактни класове (pure virtual)
                 </li>
             </ul>
         </section>
@@ -223,7 +222,7 @@ BENCHMARK_MAIN();
             <h3>Бъдеща реализация</h3>
             <ul>
                 <li>Ускорена компресия (използване на нишки)</li>
-                <li>Оптимизирана компресия (използване на mmap)</li>
+                <li>Cross-platform, понеже в момента работи само на linux</li>
             </ul>
         </section>
 
@@ -232,66 +231,30 @@ BENCHMARK_MAIN();
         </section>
 
         <section>
+            <h3>Обработка на грешки</h3>
+            <ul>
+                <li>Използван е Logger за проследяване на проблемите</li>
+                <li>Клиент сървър модела има status response codes за специфични грешки</li>
+                <li>Пример</li>
+            </ul>
+        </section>
+
+        <section>
             <section>
-                <h3>Обработка на грешки</h3>
-                <ul>
-                    <li>Използван е Logger за проследяване на проблемите</li>
-                    <li>Клиент сървър модела има status response codes за специфични грешки</li>
-                    <li>Пример</li>
-                </ul>
+                <h3>Недостатъци дистрибутирана база данни</h3>
             </section>
-
             <section>
-						<pre><code data-trim data-noescape>
-template<typename Key, typename Value>
-void Handler<Key, Value>::handle_request(std::string_view endpoint,
-                                         const http_request &request, FuncHandleRequest &action) {
-	auto path = request.relative_uri().path();
-	CHECK_ENDPOINT(path, endpoint) {
-		auto answer = json::value::object();
-		request
-		        .extract_json()
-		        .then([&answer, &action, &request](const pplx::task<json::value> &task) {
-			        try {
-				        auto const &jvalue = task.get();
+                <ul>
+                    <li>Тъй като данните са достъпни от отдалечена система, производителността е ниска.</li>
 
-				        if (!jvalue.is_null()) {
-					        action(jvalue, answer);
-				        }
-			        } catch (http_exception const &e) {
-				        ucout << e.what() << std::endl;
-				        Logger::the().log(spdlog::level::info,
-				                          R"(Backend failure of "{0}" with exception "{1}")",
-				                          request.relative_uri().path(), e.what());
-				        request.reply(status_codes::InternalError,
-				                      json::value::string(e.what()));
-				        return;
-			        }
-		        })
-		        .wait();
+                    <li>Мрежовият трафик се увеличава.</li>
 
-		request.reply(status_codes::OK, answer);
-		return;
-	}
-	try {
-		m_credentials_decoder->decode(request.headers());
-		if (!m_credentials_decoder->is_valid(request.headers())) {
-			Logger::the().log(spdlog::level::err,
-			                  R"(Backend failure of "{0}", user unauthorized)",
-			                  request.relative_uri().path());
-			request.reply(status_codes::Unauthorized);
-			return;
-		}
-	} catch (std::exception &e) {
-		Logger::the().log(spdlog::level::err,
-		                  R"(Backend failure of "{0}", user unauthorized)",
-		                  request.relative_uri().path());
-		request.reply(status_codes::Unauthorized);
-		return;
-	}
-	request.reply(status_codes::NotFound);
-}
-						</code></pre>
+                    <li>Оптимизацията на базата данни е трудна.</li>
+
+                    <li>В различните системи се използват различни формати на данните.</li>
+
+                    <li>Менацирането като цяло е трудна задача.</li>
+                </ul>
             </section>
         </section>
 
@@ -300,7 +263,29 @@ void Handler<Key, Value>::handle_request(std::string_view endpoint,
         </section>
 
         <section>
-            <h3>Криптография, сигурност клиент-сървър на транспортно ниво</h3>
+            <section>
+                <h3>Криптография, сигурност клиент-сървър на транспортно ниво</h3>
+            </section>
+
+            <section>
+                <pre><code data-trim data-noescape>
+	static Credentials decode(const http_headers &headers) {
+		auto auth_header = headers.find(U("authorization"));
+		std::vector<unsigned char> creds = utility::conversions
+		::from_base64(auth_header->second
+			              .substr(6, auth_header->second.size()));
+
+		//	The creds are in the form of username:password
+		//	stored in vector like "u" "s" "e" "r" "n" "a" "m" "e" ":" "p" "a" "s" "s" "w" "o" "r" "d"
+		const std::string username{creds.begin(), std::find(creds.begin(), creds.end(), ':')};
+		const std::string password{std::find(creds.begin(), creds.end(), ':') + 1, creds.end()};
+
+		std::size_t pass_hash = std::hash<std::string>{}(password);
+		return Credentials{username, std::to_string(pass_hash)};
+	}
+
+						</code></pre>
+            </section>
         </section>
 
         <section>
